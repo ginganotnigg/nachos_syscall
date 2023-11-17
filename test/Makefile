@@ -112,7 +112,7 @@ ifeq ($(hosttype),unknown)
 PROGRAMS = unknownhost
 else
 # change this if you create a new test program!
-PROGRAMS = add halt shell matmult sort segments createfile cat copy delete concatenate
+PROGRAMS = add halt shell matmult sort segments createfile echoclient cat concatenate copy delete fileclient
 endif
 
 all: $(PROGRAMS)
@@ -128,6 +128,7 @@ halt: halt.o start.o
 
 add.o: add.c
 	$(CC) $(CFLAGS) -c add.c
+
 add: add.o start.o
 	$(LD) $(LDFLAGS) start.o add.o -o add.coff
 	$(COFF2NOFF) add.coff add
@@ -137,6 +138,12 @@ shell.o: shell.c
 shell: shell.o start.o
 	$(LD) $(LDFLAGS) start.o shell.o -o shell.coff
 	$(COFF2NOFF) shell.coff shell
+
+createfile.o: createfile.c
+	$(CC) $(CFLAGS) -c createfile.c
+createfile: createfile.o start.o
+	$(LD) $(LDFLAGS) start.o createfile.o -o createfile.coff
+	$(COFF2NOFF) createfile.coff createfile
 
 sort.o: sort.c
 	$(CC) $(CFLAGS) -c sort.c
@@ -156,17 +163,17 @@ matmult: matmult.o start.o
 	$(LD) $(LDFLAGS) start.o matmult.o -o matmult.coff
 	$(COFF2NOFF) matmult.coff matmult
 
-createfile.o: createfile.c
-	$(CC) $(CFLAGS) -c createfile.c
-createfile: createfile.o start.o
-	$(LD) $(LDFLAGS) start.o createfile.o -o createfile.coff
-	$(COFF2NOFF) createfile.coff createfile
-
 cat.o: cat.c
 	$(CC) $(CFLAGS) -c cat.c
 cat: cat.o start.o
 	$(LD) $(LDFLAGS) start.o cat.o -o cat.coff
 	$(COFF2NOFF) cat.coff cat
+
+concatenate.o: concatenate.c
+	$(CC) $(CFLAGS) -c concatenate.c
+concatenate: concatenate.o start.o
+	$(LD) $(LDFLAGS) start.o concatenate.o -o concatenate.coff
+	$(COFF2NOFF) concatenate.coff concatenate
 
 copy.o: copy.c
 	$(CC) $(CFLAGS) -c copy.c
@@ -180,11 +187,18 @@ delete: delete.o start.o
 	$(LD) $(LDFLAGS) start.o delete.o -o delete.coff
 	$(COFF2NOFF) delete.coff delete
 
-concatenate.o: concatenate.c
-	$(CC) $(CFLAGS) -c concatenate.c
-concatenate: concatenate.o start.o
-	$(LD) $(LDFLAGS) start.o concatenate.o -o concatenate.coff
-	$(COFF2NOFF) concatenate.coff concatenate
+echoclient.o: echoclient.c
+	$(CC) $(CFLAGS) -c echoclient.c
+echoclient: echoclient.o start.o
+	$(LD) $(LDFLAGS) start.o echoclient.o -o echoclient.coff
+	$(COFF2NOFF) echoclient.coff echoclient
+
+fileclient.o: fileclient.c
+	$(CC) $(CFLAGS) -c fileclient.c
+fileclient: fileclient.o start.o
+	$(LD) $(LDFLAGS) start.o fileclient.o -o fileclient.coff
+	$(COFF2NOFF) fileclient.coff fileclient
+
 
 clean:
 	$(RM) -f *.o *.ii

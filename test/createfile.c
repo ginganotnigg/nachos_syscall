@@ -1,21 +1,10 @@
-#include "syscall.h"
-
-int main() {
-    char fileName[256];
-    int length;
-
-    //PrintString("Enter filename's length: ");
-    //length = ReadNum();
+#include "syscall.h" 
+#define maxlen 32
+int main() 
+{ 
+    char filename[maxlen];
     PrintString("Enter filename: ");
-    ReadString(fileName, 32);
-    
-    if (Create(fileName) == 0){
-        PrintString("Create file ");
-        PrintString(fileName);
-        PrintString(" successfully\n");
-    }
-    else {
-        PrintString("Failed to create file\n");
-    }
-    Halt();
+    ReadString(filename, maxlen);
+    Create(filename);
+    Halt(); 
 }

@@ -1,49 +1,35 @@
 #include "syscall.h"
+#include "copyright.h" 
+#define maxlen 32 
+int main() 
+{ 
+    int srcID,dstID,size,temp;
+    char buffer[1024];
+    char src[maxlen];
+    char dst[maxlen];
 
-int main() {
-    char content[1024];
-    int src, dst;
-    int fileLength;
-    char srcFile[256];
-    char dstFile[256];
-
-    //PrintString("Enter source filename's length: ");
-    //strLength = ReadNum();
     PrintString("Enter source filename: ");
-    ReadString(srcFile, 32);
-
+    ReadString(src, maxlen);
+        
     PrintString("Enter destination filename: ");
-    ReadString(dstFile, 32);
+    ReadString(dst, maxlen);
 
-    src = Open(srcFile, 1);
-    if (src == -1) 
+    srcID=Open(src, 0);
+    dstID=Open(dst, 0);
+    if(dstID == -1) 
     {
-        PrintString("Non-exist source file!!\n");
+        Create(dst);
+        dstID=Open(dst, 0);
     }
-    else {
-        fileLength = Seek(-1, src);
-        Seek(0, src);
-        PrintString("Number of characters read: ");
-        PrintNum(fileLength);
-        PrintString("\n");
-        Read(content, fileLength, src);
-        Close(src);
-
-        dst = Open(dstFile, 1);
-        if (dst == -1) {
-            if (Create(dstFile) == -1) 
-            {
-                PrintString("Cannot create destination file!!\n");
-                Halt();
-            }
-            else {
-                PrintString("New file created!\n");
-                dst = Open(dstFile, 1);
-            }
-        }
-        Write(content, fileLength, dst);
-        PrintString("Successfully copy file!!\n");
-        Close(dst);
+        
+    if((srcID>0 && srcID<20) && (dstID>0 && dstID<20))
+    {
+        size=Seek(-1,srcID);
+        temp=Seek(0,srcID);
+        Read(buffer,size,srcID);
+        Write(buffer,size,dstID);
+        Close(srcID);
+        Close(dstID);
     }
-    Halt();
+    Halt(); 
 }
