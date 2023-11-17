@@ -93,6 +93,55 @@ bool compareNumAndString(int integer, const char *s) {
     return len == 0;
 }
 
+void increase_PC() {
+    /* set previous programm counter (debugging only)
+     * similar to: registers[PrevPCReg] = registers[PCReg];*/
+    kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));
+
+    /* set programm counter to next instruction
+     * similar to: registers[PCReg] = registers[NextPCReg]*/
+    kernel->machine->WriteRegister(PCReg, kernel->machine->ReadRegister(NextPCReg));
+
+    /* set next programm counter for brach execution
+     * similar to: registers[NextPCReg] = pcAfter;*/
+    kernel->machine->WriteRegister(NextPCReg, kernel->machine->ReadRegister(NextPCReg) + 4);
+}
+
+char* User2System(int virtAddr, int limit)
+{
+	int i; //chi so index
+	int oneChar;
+	char* kernelBuf = NULL;
+	kernelBuf = new char[limit + 1]; //can cho chuoi terminal
+	if (kernelBuf == NULL)
+		return kernelBuf;
+		
+	memset(kernelBuf, 0, limit + 1);
+	
+	for (i = 0; i < limit; i++)
+	{
+		kernel->machine->ReadMem(virtAddr + i, 1, &oneChar);
+		kernelBuf[i] = (char)oneChar;
+		if (oneChar == 0)
+			break;
+	}
+	return kernelBuf;
+}
+
+int System2User(char* buffer, int virtAddr, int len)
+{
+	if (len < 0) return -1;
+	if (len == 0)return len;
+	int i = 0;
+	int oneChar = 0;
+	do{
+		oneChar = (int)buffer[i];
+		kernel->machine->WriteMem(virtAddr + i, 1, oneChar);
+		i++;
+	} while (i < len && oneChar != 0);
+	return i;
+}
+
 /*
 * System functions
 */
@@ -101,7 +150,6 @@ bool compareNumAndString(int integer, const char *s) {
 void SysHalt() {
     kernel->interrupt->Halt();
 }
-
 
 int SysAdd(int op1, int op2) {
     return op1 + op2;
@@ -166,9 +214,6 @@ int SysReadNum() {
      */
     if (compareNumAndString(num, _numberBuffer))
         return num;
-    else
-        DEBUG(dbgSys, "Expected int32 number but " << _numberBuffer << " found");
-
     return 0;
 }
 
@@ -209,16 +254,25 @@ int SysRandomNum() {
 
 char* SysReadString(int length) {
     char* buffer = new char[length + 1];
+    char tmp;
     for (int i = 0; i < length; i++) {
-        buffer[i] = SysReadChar();
+        tmp = kernel->synchConsoleIn->GetChar();
+        if (tmp == '\0' || tmp == '\n') 
+        {
+            buffer[i] = '\0';
+            break;
+        }
+        buffer[i] = tmp;
     }
     buffer[length] = '\0';
     return buffer;
 }
 
 void SysPrintString(char* buffer, int length) {
-    for (int i = 0; i < length; i++) {
+    int i = 0;
+    while (buffer[i] != '\0') {
         kernel->synchConsoleOut->PutChar(buffer[i]);
+        i++;
     }
 }
 
@@ -226,24 +280,112 @@ int SysCreateFile(char* fileName) {
     int fileNameLength = strlen(fileName);
 
     if (fileNameLength == 0) {
-        DEBUG(dbgSys, "\nFile name can't be empty");
         return 0;
     }
     if (fileName == NULL) {
-        DEBUG(dbgSys, "\nNot enough memory in system");
         return 0;
     }
-    DEBUG(dbgSys, "\nFile's name read successfully");
     if (!kernel->fileSystem->Create(fileName)) {
-        DEBUG(dbgSys, "\nError creating file");
         return 0;
     }
 
     return 1;
 }
 
+int SysOpen(char* fileName, int type) {
+    if (type != 0 && type != 1) return -1;
 
+    int id = kernel->fileSystem->Insert(fileName, type);
+    if (id == -1) return -1;
+    return id;
+}
 
+int SysClose(int id) { return kernel->fileSystem->Close(id); }
+
+int SysRead(int virtAddr, int length, OpenFileId fileID) 
+{
+    //Number of bytes read
+    int bytes = -1;
+    if (fileID == 0 || fileID == 1) {
+        return bytes;
+    }
+
+    char *buffer = new char[length + 1];
+            
+    //Read the content into buffer
+    bytes = kernel->fileSystem->openFile[fileID]->Read(buffer, length);
+    if (bytes > 0) 
+    {
+        //buffer[bytes] = '\0';
+        System2User(buffer, virtAddr, bytes);
+    }
+
+    delete buffer;
+    return bytes;
+}
+
+int SysWrite(int virtAddr, int length, OpenFileId fileID) 
+{
+    // Number of bytes read
+    int bytes = -1;
+
+    if (fileID == 0 || fileID == 1) {
+        return bytes;
+    }
+
+    char *buffer = User2System(virtAddr, length);
+    OpenFile *filePtr = kernel->fileSystem->openFile[fileID];
+    if (buffer == NULL) 
+    {
+        return -1;
+    }
+    if (filePtr->GetFileType() == 0) 
+    {
+        return -1;
+    }
+
+    //Write to file 
+    bytes = filePtr->Write(buffer, length);
+    if (bytes > 0) buffer[bytes] = 0;
+
+    delete[] buffer;
+    return bytes;
+}
+
+int SysSeek(int pos, int fileID) 
+{
+    OpenFile *filePtr = kernel->fileSystem->openFile[fileID];
+
+    //Check whether file exist
+    if (filePtr == NULL) 
+    {
+        return -1;
+    }
+    //Get file length
+    if (pos == -1) pos = filePtr->Length();
+
+    if (pos > filePtr->Length() || pos < 0) 
+    {
+        return -1;
+    }
+    filePtr->Seek(pos);
+    return pos;
+}
+
+int SysRemove(char* fileName) {
+    int result;
+    
+    //Check whether file is opening
+    OpenFile *file = kernel->fileSystem->GetFileDes(fileName);
+    if (file != NULL) {
+        delete[] fileName;
+        return -1;
+    }
+    result = kernel->fileSystem->Remove(fileName);
+
+    delete[] fileName;
+    return result;
+}
 
 
 

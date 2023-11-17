@@ -25,6 +25,8 @@
 #include "main.h"
 #include "syscall.h"
 #include "ksyscall.h"
+
+#define MAX_STRLEN 255
 //----------------------------------------------------------------------
 // ExceptionHandler
 // 	Entry point into the Nachos kernel.  Called when a user program
@@ -47,56 +49,6 @@
 //	"which" is the kind of exception.  The list of possible exceptions 
 //	is in machine.h.
 //----------------------------------------------------------------------
-
-/* 
-* Other functions
-*/
-
-void move_program_counter() {
-    /* set previous programm counter (debugging only)
-     * similar to: registers[PrevPCReg] = registers[PCReg];*/
-    kernel->machine->WriteRegister(PrevPCReg, kernel->machine->ReadRegister(PCReg));
-
-    /* set programm counter to next instruction
-     * similar to: registers[PCReg] = registers[NextPCReg]*/
-    kernel->machine->WriteRegister(PCReg, kernel->machine->ReadRegister(NextPCReg));
-
-    /* set next programm counter for brach execution
-     * similar to: registers[NextPCReg] = pcAfter;*/
-    kernel->machine->WriteRegister(NextPCReg, kernel->machine->ReadRegister(NextPCReg) + 4);
-}
-
-char* stringUser_Sys(int addr, int convert_length = -1) {
-    int length = 0;
-    bool stop = false;
-    char* str;
-
-    do {
-        int oneChar;
-        kernel->machine->ReadMem(addr + length, 1, &oneChar);
-        length++;
-        // if convert_length == -1, we use '\0' to terminate the process
-        // otherwise, we use convert_length to terminate the process
-        stop = ((oneChar == '\0' && convert_length == -1) ||
-                length == convert_length);
-    } while (!stop);
-
-    str = new char[length];
-    for (int i = 0; i < length; i++) {
-        int oneChar;
-        kernel->machine->ReadMem(addr + i, 1, &oneChar);  // copy characters to kernel space
-        str[i] = (unsigned char)oneChar;
-    }
-    return str;
-}
-
-void stringSys_User(char* str, int addr, int convert_length = -1) {
-    int length = (convert_length == -1 ? strlen(str) : convert_length);
-    for (int i = 0; i < length; i++) {
-        kernel->machine->WriteMem(addr + i, 1, str[i]);  // copy characters to user space
-    }
-    kernel->machine->WriteMem(addr + length, 1, '\0');
-}
 
 /* 
 * Handle syscall
@@ -122,77 +74,165 @@ void handle_SC_Add() {
     /* Prepare Result */
     kernel->machine->WriteRegister(2, (int)result);
 
-    return move_program_counter();
+    return increase_PC();
 }
 
 void handle_SC_ReadNum() {
     int result = SysReadNum();
     kernel->machine->WriteRegister(2, result);
-    return move_program_counter();
+    return increase_PC();
 }
 
 void handle_SC_PrintNum() {
     int character = kernel->machine->ReadRegister(4);
     SysPrintNum(character);
-    return move_program_counter();
+    return increase_PC();
 }
 
 void handle_SC_ReadChar() {
     char result = SysReadChar();
     kernel->machine->WriteRegister(2, (int)result);
-    return move_program_counter();
+    return increase_PC();
 }
 
 void handle_SC_PrintChar() {
     char character = (char)kernel->machine->ReadRegister(4);
     SysPrintChar(character);
-    return move_program_counter();
+    return increase_PC();
 }
 
 void handle_SC_RandomNum() {
     int result;
     result = SysRandomNum();
     kernel->machine->WriteRegister(2, result);
-    return move_program_counter();
+    return increase_PC();
 }
 
-#define MAX_READ_STRING_LENGTH 255
 void handle_SC_ReadString() {
     int memPtr = kernel->machine->ReadRegister(4);  // read address of C-string
     int length = kernel->machine->ReadRegister(5);  // read length of C-string
-    if (length > MAX_READ_STRING_LENGTH) {  // avoid allocating large memory
-        DEBUG(dbgSys, "String length exceeds " << MAX_READ_STRING_LENGTH);
-        SysHalt();
+    if (length > MAX_STRLEN || length < 1) {  // avoid allocating large memory
+        DEBUG(dbgSys, "Invalid string length\n");
+        return increase_PC();
     }
-    char* buffer = SysReadString(length);
-    stringSys_User(buffer, memPtr);
-    delete[] buffer;
-    return move_program_counter();
+    char* buffer = SysReadString(length + 1);
+    System2User(buffer, memPtr, length + 1);
+    delete buffer;
+    return increase_PC();
 }
 
 void handle_SC_PrintString() {
     int memPtr = kernel->machine->ReadRegister(4);  // read address of C-string
-    char* buffer = stringUser_Sys(memPtr);
+    char* buffer = User2System(memPtr, MAX_STRLEN);
 
     SysPrintString(buffer, strlen(buffer));
-    delete[] buffer;
-    return move_program_counter();
+    delete buffer;
+    return increase_PC();
 }
 
 void handle_SC_Create() {
     int virtAddr = kernel->machine->ReadRegister(4);
-    char* fileName = stringUser_Sys(virtAddr);
+    char* fileName = User2System(virtAddr, MAX_STRLEN);
 
-    if (SysCreateFile(fileName)) {
-        kernel->machine->WriteRegister(2, 0);
-        DEBUG(dbgSys, "Create file successfully\n");
+    kernel->machine->WriteRegister(2, SysCreateFile(fileName) - 1);
+    
+    delete fileName;
+    return increase_PC();
+}
+
+void handle_SC_Open() {
+    int virtAddr = kernel->machine->ReadRegister(4);
+    char* fileName = User2System(virtAddr, MAX_STRLEN);
+    int type = kernel->machine->ReadRegister(5);
+
+    //Check whether there is error on reading filename
+    if (fileName == NULL || strlen(fileName) == 0 || 
+        !OpenForRead(fileName, FALSE) || !OpenForReadWrite(fileName, FALSE)) 
+    {
+        kernel->machine->WriteRegister(2, -1);
+        if (fileName) delete[] fileName;
+        return increase_PC();
+    }
+
+    kernel->machine->WriteRegister(2, SysOpen(fileName, type));
+
+    delete[] fileName;
+    return increase_PC();
+}
+
+void handle_SC_Close() {
+    int id = kernel->machine->ReadRegister(4);
+    if (id >= 0 && id < MAX_FILES){
+        kernel->machine->WriteRegister(2, SysClose(id) - 1);
     }
     else {
         kernel->machine->WriteRegister(2, -1);
-        DEBUG(dbgSys, "Failed to create file\n");
     }
-    delete[] fileName;
-    return move_program_counter();
+
+    return increase_PC();
+}
+
+void handle_SC_Read() {
+    int virtAddr = kernel->machine->ReadRegister(4);
+    int length = kernel->machine->ReadRegister(5);
+    OpenFileId fileID = kernel->machine->ReadRegister(6);
+    if (length < 0 || fileID < 0 || fileID >= MAX_FILES) 
+    {
+        kernel->machine->WriteRegister(2, -1);
+    }
+    else 
+    {
+        int n = SysRead(virtAddr, length, fileID);
+        kernel->machine->WriteRegister(2, n);
+    }
+    return increase_PC();
+}
+
+void handle_SC_Write() {
+    int virtAddr = kernel->machine->ReadRegister(4);
+    int length = kernel->machine->ReadRegister(5);
+    OpenFileId fileID = kernel->machine->ReadRegister(6);
+
+    if (length < 1 || fileID < 1 || fileID >= MAX_FILES) 
+    {
+        kernel->machine->WriteRegister(2, -1);
+    }
+    else 
+    {
+        kernel->machine->WriteRegister(2, SysWrite(virtAddr, length, fileID));
+    }
+    return increase_PC();
+}
+
+void handle_SC_Seek() {
+    int pos = kernel->machine->ReadRegister(4);
+    int fileID = kernel->machine->ReadRegister(5);
+    if (fileID < 2 || fileID >= MAX_FILES) 
+    {
+        kernel->machine->WriteRegister(2, -1);
+    }
+    else 
+    {
+        kernel->machine->WriteRegister(2, SysSeek(pos, fileID));
+    }
+    return increase_PC();
+}
+
+void handle_SC_Remove() {
+    int virtAddr = kernel->machine->ReadRegister(4);
+    char *fileName = User2System(virtAddr, MAX_STRLEN);
+    if (fileName == NULL || strlen(fileName) == 0) 
+    {
+        kernel->machine->WriteRegister(2, -1);
+        if (fileName) {
+            delete[] fileName;
+        }
+    }
+    else {
+        kernel->machine->WriteRegister(2, SysRemove(fileName));
+    }
+
+    return increase_PC();
 }
 
 /* 
@@ -203,13 +243,16 @@ void ExceptionHandler(ExceptionType which)
 {
     int type = kernel->machine->ReadRegister(2);
 
-    DEBUG(dbgSys, "Received Exception " << which << " type: " << type << "\n");
+    //DEBUG(dbgSys, "Received Exception " << which << " type: " << type << "\n");
 
     switch (which) {
-		case SyscallException:
+        case SyscallException:
 			switch(type) {
+                case SC_Halt:
+                    return handle_SC_Halt();
 				case SC_Add:
                     return handle_SC_Add();
+                // Helper system call
                 case SC_ReadNum:
                     return handle_SC_ReadNum();
                 case SC_PrintNum:
@@ -224,17 +267,28 @@ void ExceptionHandler(ExceptionType which)
                     return handle_SC_ReadString();
                 case SC_PrintString:
                     return handle_SC_PrintString();
+                // File system call
                 case SC_Create:
                     return handle_SC_Create();
-                case SC_Halt:
-                    return handle_SC_Halt();
+                case SC_Open:
+                    return handle_SC_Open();
+                case SC_Close:
+                    return handle_SC_Close();
+                case SC_Read:
+                    return handle_SC_Read();
+                case SC_Write:
+                    return handle_SC_Write();
+                case SC_Seek:
+                    return handle_SC_Seek();
+                case SC_Remove:
+                    return handle_SC_Remove();
 				default:
                     cerr << "Unexpected system call " << type << "\n";
                     break;
 			}
 			break;
 		default:
-			cerr << "Unexpected user mode exception" << (int)which << "\n";
+			cerr << "Unexpected user mode exception " << (int)which << "\n";
 		    break;
     }
     ASSERTNOTREACHED();
