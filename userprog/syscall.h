@@ -44,6 +44,12 @@
 #define SC_ReadString   48
 #define SC_PrintString  49
 
+#define SC_SocketTCP    31
+#define SC_Connect	    32
+#define SC_Send         33
+#define SC_Receive      34
+
+
 #ifndef IN_ASM
 
 /* The system call interface.  These are the operations the Nachos
@@ -63,6 +69,7 @@ void Halt();
 /*
  * Other functions
  */ 
+
 
 int Add(int op1, int op2);
 
@@ -140,6 +147,7 @@ int Remove(char *name);
 /* Open the Nachos file "name", and return an "OpenFileId" that can 
  * be used to read and write to the file.
  */
+//OpenFileId Open(char *name);
 OpenFileId Open(char *name, int type);
 
 /* Write "size" bytes from "buffer" to the open file. 
@@ -195,7 +203,11 @@ int ThreadJoin(ThreadId id);
  */
 void ThreadExit(int ExitCode);	
 
+int SocketTCP();
+int Connect(int socketID, char* ip,int port);
+int Send(int socketID, char *buffer, int len);
+int Receive(int socketID, char *buffer, int len);
+
 #endif /* IN_ASM */
 
 #endif /* SYSCALL_H */
-
